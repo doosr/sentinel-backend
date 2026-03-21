@@ -24,6 +24,11 @@ function generateSentinelKey(hwid, tier) {
 
 // --- Routes ---
 
+// 0. Health Check / Root
+app.get('/', (req, res) => {
+    res.send('Sentinel Whop Backend is RUNNING 🚀');
+});
+
 // 1. Webhook for Whop
 // Endpoint to be configured in Whop Dashboard: https://your-server.com/webhook/whop
 app.post('/webhook/whop', (req, res) => {
