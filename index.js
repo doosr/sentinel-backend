@@ -7,12 +7,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// In-memory store for pending activations (in a real app, use a database like SQLite/MongoDB)
-// Structure: { [hwid]: { tier: 'pro' | 'ultimate', timestamp: number } }
+// In-memory store for pending activations
 const pendingActivations = {};
 
 const PORT = process.env.PORT || 3001;
-const WHOP_WEBHOOK_SECRET = process.env.WHOP_WEBHOOK_SECRET || 'your_secret_here';
+const WHOP_API_KEY = process.env.WHOP_API_KEY; 
+const WHOP_WEBHOOK_SECRET = process.env.WHOP_WEBHOOK_SECRET; 
 
 // --- Cryptography logic matching the client ---
 const SALT = "SENTINEL-ULTIMATE-SECRET-2026";
@@ -24,29 +24,34 @@ function generateSentinelKey(hwid, tier) {
 
 // --- Routes ---
 
-// 0. Health Check / Root
 app.get('/', (req, res) => {
     res.send('Sentinel Whop Backend is RUNNING 🚀');
 });
 
-// 1. Webhook for Whop
-// Endpoint to be configured in Whop Dashboard: https://your-server.com/webhook/whop
-app.post('/webhook/whop', (req, res) => {
-    // Note: In production, verify the Whop signature header!
-    const event = req.body;
+// Webhook for Whop
+// URL configurée sur Whop : https://votre-app.com/api/whop-webhook
+app.post('/api/whop-webhook', (req, res) => {
+    const signature = req.headers['whop-signature'];
     
+    if (WHOP_WEBHOOK_SECRET) {
+        const hmac = crypto.createHmac('sha256', WHOP_WEBHOOK_SECRET);
+        const digest = hmac.update(JSON.stringify(req.body)).digest('hex');
+        if (signature !== digest) {
+            console.error('Invalid Whop Signature');
+            return res.status(401).send('Invalid Signature');
+        }
+    }
+
+    const event = req.body;
     console.log('Received Whop Event:', event.action);
 
     if (event.action === 'membership.went_active' || event.action === 'payment.succeeded') {
-        const email = event.data.user?.email;
-        // Whop allows passing custom metadata or using 'passthrough' params in the checkout URL.
-        // We expect the HWID to be passed as a metadata field 'hwid'
+        const email = event.data.user?.email || event.data.email;
         const hwid = event.data.metadata?.hwid || event.data.custom_fields?.hwid;
         
         let tier = 'pro';
-        // Logic to determine tier based on product ID or plan ID
-        // Example: if (event.data.plan_id === 'plan_123') tier = 'ultimate';
-        if (event.data.plan?.name?.toLowerCase().includes('ultimate')) {
+        const planName = event.data.plan?.name?.toLowerCase() || "";
+        if (planName.includes('ultimate')) {
             tier = 'ultimate';
         }
 
@@ -57,28 +62,24 @@ app.post('/webhook/whop', (req, res) => {
                 key: generateSentinelKey(hwid, tier),
                 timestamp: Date.now()
             };
-        } else {
-            console.warn('Payment received but no HWID found in metadata.');
         }
     }
 
     res.status(200).send('Webhook Received');
 });
 
-// 2. Polling Endpoint for the App
+// Polling Endpoint
 app.get('/api/status/:hwid', (req, res) => {
     const hwid = req.params.hwid.toUpperCase();
     const activation = pendingActivations[hwid];
 
     if (activation) {
-        // Return the key and tier, then remove from pending (or keep for a short duration)
         res.json({
             status: 'paid',
             tier: activation.tier,
             key: activation.key
         });
-        // Optional: remove after 1 minute to allow for network retries
-        setTimeout(() => delete pendingActivations[hwid], 60000);
+        setTimeout(() => delete pendingActivations[hwid], 300000);
     } else {
         res.json({ status: 'pending' });
     }
