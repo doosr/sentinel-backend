@@ -34,7 +34,12 @@ app.get('/', (req, res) => {
 
 // Webhook for Whop
 // URL configurée sur Whop : https://votre-app.com/api/whop-webhook
+app.get('/api/whop-webhook', (req, res) => {
+    res.send('Whop Webhook Endpoint is ACTIVE 🚀 (Use POST for webhooks)');
+});
+
 app.post('/api/whop-webhook', (req, res) => {
+
     const signature = req.headers['whop-signature'];
     
     if (WHOP_WEBHOOK_SECRET && req.rawBody) {
