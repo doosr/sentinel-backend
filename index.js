@@ -5,7 +5,11 @@ const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 
 // In-memory store for pending activations
 const pendingActivations = {};
@@ -33,14 +37,15 @@ app.get('/', (req, res) => {
 app.post('/api/whop-webhook', (req, res) => {
     const signature = req.headers['whop-signature'];
     
-    if (WHOP_WEBHOOK_SECRET) {
+    if (WHOP_WEBHOOK_SECRET && req.rawBody) {
         const hmac = crypto.createHmac('sha256', WHOP_WEBHOOK_SECRET);
-        const digest = hmac.update(JSON.stringify(req.body)).digest('hex');
+        const digest = hmac.update(req.rawBody).digest('hex');
         if (signature !== digest) {
             console.error('Invalid Whop Signature');
             return res.status(401).send('Invalid Signature');
         }
     }
+
 
     const event = req.body;
     console.log('Received Whop Event:', event.action);
